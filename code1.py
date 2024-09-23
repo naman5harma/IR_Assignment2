@@ -3,42 +3,42 @@ from collections import defaultdict
 
 class VectorSpaceModel:
     def __init__(self):
-        self.dictionary = {}
-        self.postings = defaultdict(list)
-        self.doc_lengths = {}
+        self.dictionary = {}  # {term: doc_freq}
+        self.postings = defaultdict(list)  # {term: [(doc_id, term_freq), ...]}
+        self.doc_lengths = {}  # {doc_id: length}
 
     def add_document(self, doc_id, text):
         terms = text.lower().split()
+        self.doc_lengths[doc_id] = len(terms)
+        
         term_freq = defaultdict(int)
         for term in terms:
             term_freq[term] += 1
-
-        doc_length = len(terms)
-        self.doc_lengths[doc_id] = doc_length
-
+        
         for term, freq in term_freq.items():
             if term not in self.dictionary:
-                self.dictionary[term] = len(self.dictionary)
+                self.dictionary[term] = 0
+            self.dictionary[term] += 1
             self.postings[term].append((doc_id, freq))
 
     def compute_tfidf(self, term, doc_id, freq):
         tf = 1 + math.log10(freq)
-        idf = math.log10(len(self.doc_lengths) / len(self.postings[term]))
+        idf = math.log10(len(self.doc_lengths) / self.dictionary[term])
         return tf * idf
 
     def search(self, query):
         query_terms = query.lower().split()
-        query_vector = defaultdict(float)
+        scores = defaultdict(float)
+        
         for term in query_terms:
             if term in self.dictionary:
-                query_vector[term] = self.compute_tfidf(term, 'query', 1)
+                idf = math.log10(len(self.doc_lengths) / self.dictionary[term])
+                for doc_id, freq in self.postings[term]:
+                    tf = 1 + math.log10(freq)
+                    tfidf = tf * idf
+                    scores[doc_id] += tfidf
 
-        scores = defaultdict(float)
-        for term, query_weight in query_vector.items():
-            for doc_id, freq in self.postings[term]:
-                doc_weight = self.compute_tfidf(term, doc_id, freq)
-                scores[doc_id] += query_weight * doc_weight
-
+        # Normalize scores by document length
         for doc_id in scores:
             scores[doc_id] /= self.doc_lengths[doc_id]
 
@@ -54,7 +54,7 @@ def read_corpus(file_path):
 
 # Main execution
 if __name__ == "__main__":
-    corpus_path = "corpus.txt"  # Replace with actual path
+    corpus_path = "path_to_your_corpus_file.txt"  # Replace with actual path
     vsm = VectorSpaceModel()
 
     # Read and add documents from corpus
