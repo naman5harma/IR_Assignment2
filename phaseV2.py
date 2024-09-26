@@ -5,11 +5,14 @@ import argparse
 from collections import defaultdict
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
+from nltk.stem import WordNetLemmatizer
+import re
 import nltk
 
+# Download necessary NLTK resources
 nltk.download('punkt', quiet=True)
 nltk.download('stopwords', quiet=True)
+nltk.download('wordnet', quiet=True)
 
 class VectorSpaceModel:
     def __init__(self, corpus_path, index_dir):
@@ -19,12 +22,15 @@ class VectorSpaceModel:
         self.document_lengths = {}
         self.total_documents = 0
         self.stopwords = set(stopwords.words('english'))
-        self.stemmer = PorterStemmer()
+        self.lemmatizer = WordNetLemmatizer()
         self.document_id_map = {}
 
     def preprocess_text(self, text):
-        words = word_tokenize(text.lower())
-        return [self.stemmer.stem(word) for word in words if word.isalnum() and word not in self.stopwords]
+        # Use regex to remove unwanted characters, tokenize, and lemmatize words
+        text = re.sub(r'[^\w\s]', '', text.lower())  # Remove punctuation and lower the text
+        words = word_tokenize(text)
+        # Lemmatize and remove stopwords
+        return [self.lemmatizer.lemmatize(word) for word in words if word.isalnum() and word not in self.stopwords]
 
     def build_index(self):
         for doc_id, filename in enumerate(sorted(os.listdir(self.corpus_path)), start=1):
@@ -35,6 +41,9 @@ class VectorSpaceModel:
                 with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
                     content = file.read()
                     words = self.preprocess_text(content)
+                    
+                    if not words:
+                        continue  # Skip empty documents
                     
                     term_freq = defaultdict(int)
                     for word in words:
@@ -92,6 +101,8 @@ class VectorSpaceModel:
 
         # Normalize query vector
         query_length = math.sqrt(sum(weight ** 2 for weight in query_vector.values()))
+        if query_length == 0:
+            return []  # No valid terms in query
         for term in query_vector:
             query_vector[term] /= query_length
 
@@ -138,9 +149,12 @@ def main():
                 break
 
             results = vsm.search(query)
-            print("\nTop 10 most relevant documents:")
-            for i, (filename, score) in enumerate(results, 1):
-                print(f"{i}. {filename} (Score: {score:.4f})")
+            if results:
+                print("\nTop 10 most relevant documents:")
+                for i, (filename, score) in enumerate(results, 1):
+                    print(f"{i}. {filename} (Score: {score:.4f})")
+            else:
+                print("No relevant documents found.")
 
 if __name__ == "__main__":
     main()
