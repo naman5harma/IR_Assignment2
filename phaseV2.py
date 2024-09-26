@@ -30,7 +30,7 @@ class VectorSpaceModel:
         for doc_id, filename in enumerate(sorted(os.listdir(self.corpus_path)), start=1):
             if filename.endswith('.txt'):
                 self.total_documents += 1
-                self.document_id_map[doc_id] = filename
+                self.document_id_map[str(doc_id)] = filename
                 filepath = os.path.join(self.corpus_path, filename)
                 with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
                     content = file.read()
@@ -42,9 +42,9 @@ class VectorSpaceModel:
                     
                     doc_length = 0
                     for term, freq in term_freq.items():
-                        if doc_id not in self.term_dictionary[term]["postings"]:
+                        if str(doc_id) not in self.term_dictionary[term]["postings"]:
                             self.term_dictionary[term]["df"] += 1
-                        self.term_dictionary[term]["postings"][doc_id] = freq
+                        self.term_dictionary[term]["postings"][str(doc_id)] = freq
                         
                         log_tf = 1 + math.log10(freq)
                         doc_length += log_tf ** 2
@@ -58,7 +58,7 @@ class VectorSpaceModel:
             json.dump(self.term_dictionary, f)
         
         with open(os.path.join(self.index_dir, 'document_lengths.json'), 'w', encoding='utf-8') as f:
-            json.dump(self.document_lengths, f)
+            json.dump({str(k): v for k, v in self.document_lengths.items()}, f)
         
         with open(os.path.join(self.index_dir, 'total_documents.txt'), 'w', encoding='utf-8') as f:
             f.write(str(self.total_documents))
@@ -68,7 +68,7 @@ class VectorSpaceModel:
 
     def load_index(self):
         with open(os.path.join(self.index_dir, 'term_dictionary.json'), 'r', encoding='utf-8') as f:
-            self.term_dictionary = defaultdict(lambda: {"df": 0, "postings": {}}, json.load(f))
+            self.term_dictionary = json.load(f)
         
         with open(os.path.join(self.index_dir, 'document_lengths.json'), 'r', encoding='utf-8') as f:
             self.document_lengths = {int(k): v for k, v in json.load(f).items()}
@@ -77,7 +77,7 @@ class VectorSpaceModel:
             self.total_documents = int(f.read().strip())
 
         with open(os.path.join(self.index_dir, 'document_id_map.json'), 'r', encoding='utf-8') as f:
-            self.document_id_map = {int(k): v for k, v in json.load(f).items()}
+            self.document_id_map = json.load(f)
 
     def search(self, query):
         query_terms = self.preprocess_text(query)
@@ -98,15 +98,18 @@ class VectorSpaceModel:
         # Calculate document scores
         scores = defaultdict(float)
         for term, query_weight in query_vector.items():
-            for doc_id, freq in self.term_dictionary[term]["postings"].items():
-                # Document weight (lnc scheme)
-                doc_weight = (1 + math.log10(freq)) / self.document_lengths[doc_id]
-                scores[doc_id] += query_weight * doc_weight
+            for doc_id_str, freq in self.term_dictionary[term]["postings"].items():
+                doc_id = int(doc_id_str)
+                if doc_id in self.document_lengths:
+                    # Document weight (lnc scheme)
+                    doc_weight = (1 + math.log10(freq)) / self.document_lengths[doc_id]
+                    scores[doc_id] += query_weight * doc_weight
 
         # Sort documents by score (descending) and then by document ID (ascending)
         ranked_docs = sorted(scores.items(), key=lambda x: (-x[1], x[0]))
 
-        return [(self.document_id_map[doc_id], score) for doc_id, score in ranked_docs[:10]]
+        # Map document IDs to filenames and return top 10 results
+        return [(self.document_id_map.get(str(doc_id), f"Unknown-{doc_id}"), score) for doc_id, score in ranked_docs[:10]]
 
 def main():
     parser = argparse.ArgumentParser(description="Vector Space Model for Information Retrieval")
